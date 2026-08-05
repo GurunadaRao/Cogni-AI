@@ -1,11 +1,11 @@
 {
-    "name": "ai_voice_recorder",
-    "short_name": "ai_voice_recorder",
+    "name": "EchoClip",
+    "short_name": "EchoClip",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#0A1628",
+    "theme_color": "#2196F3",
+    "description": "Record Once. Remember Forever.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

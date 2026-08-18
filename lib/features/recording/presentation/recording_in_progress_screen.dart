@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/providers/app_providers.dart';
 import '../../history/domain/models/history_models.dart';
+import '../../history/presentation/recording_detail_screen.dart';
 import 'session_summary_screen.dart';
 
 class RecordingInProgressScreen extends ConsumerStatefulWidget {
@@ -60,33 +61,34 @@ class _RecordingInProgressScreenState
         '${sec.toString().padLeft(2, '0')}';
   }
 
-  void _showStopDialog() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      barrierColor: Colors.black.withValues(alpha: 0.7),
-      builder: (_) => _StopDialog(
-        elapsed: _elapsed,
-        onStop: _stopAndSummarize,
-        onCancel: () => Navigator.of(context).pop(),
-      ),
-    );
-  }
-
-  Future<void> _stopAndSummarize() async {
-    Navigator.of(context).pop(); // close dialog
+  Future<void> _stopRecordingAndNavigate() async {
     _running = false;
+    _waveCtrl.stop();
+    _blinkCtrl.stop();
 
-    final notifier = ref.read(recorderControllerProvider.notifier);
+    final notifier = ref.read(recordingControllerProvider.notifier);
     await notifier.stopRecording();
 
+    final state = ref.read(recordingControllerProvider);
+    final note = MeetingNote(
+      id: 'm_${DateTime.now().millisecondsSinceEpoch}',
+      title: state.defaultSessionName,
+      transcript: state.liveTranscript,
+      summary: '',
+      reminders: [],
+      recordingWavUrl: '',
+      createdAt: DateTime.now(),
+      duration: Duration(seconds: _elapsed),
+    );
+
+    // Save session note into history
+    await ref.read(historyRepositoryProvider).saveMeeting(note);
+
     if (!mounted) return;
+    // Redirect directly to the recorded detail view
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(
-        pageBuilder: (_, __, ___) => GeneratingSummaryScreen(
-          elapsed: _elapsed,
-          transcript: ref.read(recorderControllerProvider).liveTranscript,
-        ),
+        pageBuilder: (_, __, ___) => RecordingDetailScreen(note: note),
         transitionsBuilder: (_, anim, __, child) =>
             FadeTransition(opacity: anim, child: child),
       ),
@@ -95,238 +97,133 @@ class _RecordingInProgressScreenState
 
   @override
   Widget build(BuildContext context) {
-    final state = ref.watch(recorderControllerProvider);
+    final state = ref.watch(recordingControllerProvider);
 
     return Scaffold(
       backgroundColor: AppColors.navyDark,
       body: SafeArea(
-        child: DefaultTabController(
-          length: 2,
-          child: Column(
-            children: [
-              // ── Header ──────────────────────────────────────
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                child: Row(
-                  children: [
-                    // Recording chip
-                    AnimatedBuilder(
-                      animation: _blinkCtrl,
-                      builder: (_, __) => Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: AppColors.recording.withValues(
-                              alpha: 0.15 + 0.1 * _blinkCtrl.value),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                              color: AppColors.recording.withValues(alpha: 0.4)),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.circle,
-                                color: AppColors.recording,
-                                size: 8 + 2 * _blinkCtrl.value),
-                            const SizedBox(width: 6),
-                            Text('Recording',
-                                style: GoogleFonts.inter(
-                                    color: AppColors.recording,
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w700)),
-                          ],
-                        ),
+        child: Column(
+          children: [
+            // ── Header ──────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+              child: Row(
+                children: [
+                  // Recording chip
+                  AnimatedBuilder(
+                    animation: _blinkCtrl,
+                    builder: (_, __) => Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: AppColors.recording.withValues(
+                            alpha: 0.15 + 0.1 * _blinkCtrl.value),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                            color: AppColors.recording.withValues(alpha: 0.4)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.circle,
+                              color: AppColors.recording,
+                              size: 8 + 2 * _blinkCtrl.value),
+                          const SizedBox(width: 6),
+                          Text('Recording Live',
+                              style: GoogleFonts.inter(
+                                  color: AppColors.recording,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700)),
+                        ],
                       ),
                     ),
-                    const Spacer(),
-                    IconButton(
-                      icon: const Icon(Icons.minimize_rounded,
-                          color: Colors.white54),
-                      onPressed: () => Navigator.of(context).pop(),
-                      tooltip: 'Minimize',
-                    ),
-                  ],
-                ),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.minimize_rounded,
+                        color: Colors.white54),
+                    onPressed: () => Navigator.of(context).pop(),
+                    tooltip: 'Minimize',
+                  ),
+                ],
               ),
+            ),
 
-              // ── Tabs ────────────────────────────────────────
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: TabBar(
-                  tabs: const [
-                    Tab(text: 'Recording'),
-                    Tab(text: 'Live Transcripts'),
-                  ],
-                  labelStyle: GoogleFonts.inter(
-                      fontWeight: FontWeight.w700, fontSize: 13),
-                  unselectedLabelStyle: GoogleFonts.inter(fontSize: 13),
-                  labelColor: Colors.white,
-                  unselectedLabelColor: Colors.white38,
-                  indicatorColor: AppColors.primary,
-                  indicatorWeight: 2.5,
-                  dividerColor: Colors.white12,
-                ),
+            // ── Integrated Recording Header Card ─────────────
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 20),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              decoration: BoxDecoration(
+                color: AppColors.navyCard,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.2),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
               ),
-
-              // ── Tab Views ────────────────────────────────────
-              Expanded(
-                child: TabBarView(
-                  children: [
-                    _RecordingTab(
-                      elapsed: _elapsed,
-                      fmt: _fmt,
-                      waveCtrl: _waveCtrl,
-                      transcript: state.liveTranscript,
-                      onStop: _showStopDialog,
+              child: Column(
+                children: [
+                  // Timer
+                  Text(
+                    _fmt(_elapsed),
+                    style: GoogleFonts.outfit(
+                      fontSize: 44,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                      letterSpacing: 2,
                     ),
-                    _TranscriptsTab(transcript: state.liveTranscript),
-                  ],
-                ),
+                  ),
+                  const SizedBox(height: 12),
+                  // Live Audio Waveform Level
+                  _LiveLevelBar(controller: _waveCtrl),
+                  const SizedBox(height: 16),
+                  // Stop Button
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.recording,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14)),
+                        elevation: 4,
+                      ),
+                      onPressed: _stopRecordingAndNavigate,
+                      icon: const Icon(Icons.stop_rounded, size: 20),
+                      label: Text('Stop Recording',
+                          style: GoogleFonts.inter(
+                              fontWeight: FontWeight.w700, fontSize: 15)),
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+            const SizedBox(height: 16),
+
+            // ── Integrated Live Transcript Area ───────────────
+            Expanded(
+              child: Container(
+                margin: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                decoration: BoxDecoration(
+                  color: AppColors.navyCard.withValues(alpha: 0.6),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.white12),
+                ),
+                child: _TranscriptsTab(transcript: state.liveTranscript),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
-// ── Recording Tab ────────────────────────────────────────────────────────────
-class _RecordingTab extends StatelessWidget {
-  final int elapsed;
-  final String Function(int) fmt;
-  final AnimationController waveCtrl;
-  final String transcript;
-  final VoidCallback onStop;
-
-  const _RecordingTab({
-    required this.elapsed,
-    required this.fmt,
-    required this.waveCtrl,
-    required this.transcript,
-    required this.onStop,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-      child: Column(
-        children: [
-          const Spacer(),
-
-          // Timer
-          Text(
-            fmt(elapsed),
-            style: GoogleFonts.outfit(
-              fontSize: 52,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-              letterSpacing: 2,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Recording in progress...',
-            style: GoogleFonts.inter(
-              fontSize: 13,
-              color: Colors.white.withValues(alpha: 0.55),
-            ),
-          ),
-          const SizedBox(height: 32),
-
-          // Stop button
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.recording,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14)),
-                elevation: 4,
-              ),
-              onPressed: onStop,
-              icon: const Icon(Icons.stop_rounded, size: 20),
-              label: Text('Stop Recording',
-                  style: GoogleFonts.inter(
-                      fontWeight: FontWeight.w700, fontSize: 15)),
-            ),
-          ),
-          const SizedBox(height: 32),
-
-          // Status row
-          _StatusIconRow(),
-          const SizedBox(height: 28),
-
-          // Live level
-          _LiveLevelBar(controller: waveCtrl),
-          const SizedBox(height: 16),
-
-          // Duration / Speakers footer
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              _FooterStat(label: 'Duration', value: fmt(elapsed)),
-              Container(width: 1, height: 32, color: Colors.white12),
-              _FooterStat(label: 'Speakers', value: '2'),
-            ],
-          ),
-          const Spacer(),
-        ],
-      ),
-    );
-  }
-}
-
-class _StatusIconRow extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-      children: const [
-        _StatusIcon(icon: Icons.dns_rounded, label: 'Server\nConnected', ok: true),
-        _StatusIcon(icon: Icons.developer_board_rounded, label: 'Device\nOnline', ok: true),
-        _StatusIcon(icon: Icons.volume_up_rounded, label: 'Audio\nConnected', ok: true),
-      ],
-    );
-  }
-}
-
-class _StatusIcon extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final bool ok;
-  const _StatusIcon({required this.icon, required this.label, required this.ok});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color: ok
-                ? AppColors.success.withValues(alpha: 0.15)
-                : Colors.white.withValues(alpha: 0.08),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(icon,
-              color: ok ? AppColors.success : Colors.white38, size: 20),
-        ),
-        const SizedBox(height: 6),
-        Text(label,
-            textAlign: TextAlign.center,
-            style: GoogleFonts.inter(
-                fontSize: 10,
-                color: Colors.white.withValues(alpha: 0.6),
-                height: 1.3)),
-      ],
-    );
-  }
-}
+// ── Live Level Bar Widget ──────────────────────────────────────────────────────
 
 class _LiveLevelBar extends StatelessWidget {
   final AnimationController controller;
@@ -385,29 +282,6 @@ class _LiveLevelBar extends StatelessWidget {
             );
           },
         ),
-      ],
-    );
-  }
-}
-
-class _FooterStat extends StatelessWidget {
-  final String label;
-  final String value;
-  const _FooterStat({required this.label, required this.value});
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Text(value,
-            style: GoogleFonts.outfit(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: Colors.white)),
-        const SizedBox(height: 2),
-        Text(label,
-            style: GoogleFonts.inter(
-                fontSize: 11,
-                color: Colors.white.withValues(alpha: 0.5))),
       ],
     );
   }
@@ -589,119 +463,6 @@ class _TranscriptBubbleTile extends StatelessWidget {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// Stop Confirmation Dialog
-// ══════════════════════════════════════════════════════════════════════════════
-class _StopDialog extends StatelessWidget {
-  final int elapsed;
-  final VoidCallback onStop;
-  final VoidCallback onCancel;
-
-  const _StopDialog(
-      {required this.elapsed,
-      required this.onStop,
-      required this.onCancel});
-
-  String _fmt(int s) {
-    final m = (s % 3600) ~/ 60;
-    final sec = s % 60;
-    return '${m.toString().padLeft(2, '0')}:${sec.toString().padLeft(2, '0')}';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      child: Container(
-        padding: const EdgeInsets.all(28),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(24),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 64,
-              height: 64,
-              decoration: BoxDecoration(
-                color: AppColors.errorBackground,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.mic_off_rounded,
-                  color: AppColors.error, size: 32),
-            ),
-            const SizedBox(height: 20),
-            Text('Stop Recording?',
-                style: GoogleFonts.outfit(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.textPrimary)),
-            const SizedBox(height: 8),
-            Text(
-              'The recording will be stopped and the\nconversation will be summarized.',
-              textAlign: TextAlign.center,
-              style: GoogleFonts.inter(
-                  fontSize: 13, color: AppColors.textMuted, height: 1.5),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.timer_outlined,
-                      color: AppColors.textMuted, size: 16),
-                  const SizedBox(width: 6),
-                  Text('Duration: ${_fmt(elapsed)}',
-                      style: GoogleFonts.inter(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.textMuted)),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.error,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                ),
-                onPressed: onStop,
-                child: Text('Stop & Summarize',
-                    style: GoogleFonts.inter(
-                        fontWeight: FontWeight.w700, fontSize: 14)),
-              ),
-            ),
-            const SizedBox(height: 10),
-            SizedBox(
-              width: double.infinity,
-              child: TextButton(
-                onPressed: onCancel,
-                child: Text('Cancel',
-                    style: GoogleFonts.inter(
-                        color: AppColors.textMuted,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14)),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ══════════════════════════════════════════════════════════════════════════════
 // Generating Summary Progress Screen
 // ══════════════════════════════════════════════════════════════════════════════
 class GeneratingSummaryScreen extends ConsumerStatefulWidget {
@@ -745,14 +506,14 @@ class _GeneratingSummaryScreenState
     }
 
     // Generate AI summary
-    final notifier = ref.read(recorderControllerProvider.notifier);
+    final notifier = ref.read(recordingControllerProvider.notifier);
     await notifier.generateAiSummary();
 
     if (!mounted) return;
-    final state = ref.read(recorderControllerProvider);
+    final state = ref.read(recordingControllerProvider);
     final note = MeetingNote(
       id: 'm_${DateTime.now().millisecondsSinceEpoch}',
-      title: 'Session ${DateString.now()}',
+      title: state.defaultSessionName,
       transcript: widget.transcript,
       summary: state.aiSummary?.rawSummary ?? '',
       reminders: state.aiSummary?.bulletPoints ?? [],

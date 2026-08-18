@@ -7,9 +7,80 @@ import '../../../core/providers/app_providers.dart';
 import '../../history/domain/models/history_models.dart';
 import '../../history/presentation/recording_detail_screen.dart';
 
-class SessionSummaryScreen extends ConsumerWidget {
+class SessionSummaryScreen extends ConsumerStatefulWidget {
   final MeetingNote note;
   const SessionSummaryScreen({super.key, required this.note});
+
+  @override
+  ConsumerState<SessionSummaryScreen> createState() => _SessionSummaryScreenState();
+}
+
+class _SessionSummaryScreenState extends ConsumerState<SessionSummaryScreen> {
+  late TextEditingController _titleController;
+  late MeetingNote _currentNote;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentNote = widget.note;
+    _titleController = TextEditingController(text: widget.note.title);
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    super.dispose();
+  }
+
+  void _showRenameDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: Text('Rename Session',
+            style: GoogleFonts.inter(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textPrimary)),
+        content: TextField(
+          controller: _titleController,
+          autofocus: true,
+          style: GoogleFonts.inter(color: AppColors.textPrimary),
+          decoration: const InputDecoration(
+            hintText: 'Enter session name',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text('Cancel', style: GoogleFonts.inter(color: AppColors.textMuted)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final newTitle = _titleController.text.trim();
+              if (newTitle.isNotEmpty) {
+                setState(() {
+                  _currentNote = MeetingNote(
+                    id: _currentNote.id,
+                    title: newTitle,
+                    transcript: _currentNote.transcript,
+                    summary: _currentNote.summary,
+                    reminders: _currentNote.reminders,
+                    recordingWavUrl: _currentNote.recordingWavUrl,
+                    createdAt: _currentNote.createdAt,
+                    duration: _currentNote.duration,
+                  );
+                });
+                ref.read(historyRepositoryProvider).saveMeeting(_currentNote);
+              }
+              Navigator.of(ctx).pop();
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
 
   String _formatDuration(Duration d) {
     final m = d.inMinutes.remainder(60);
@@ -24,25 +95,39 @@ class SessionSummaryScreen extends ConsumerWidget {
       .length;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final dateStr = DateFormat('d MMM yyyy • hh:mm a').format(note.createdAt);
-    final wordCount = _wordCount(note.transcript);
+  Widget build(BuildContext context) {
+    final dateStr = DateFormat('d MMM yyyy • hh:mm a').format(_currentNote.createdAt);
+    final wordCount = _wordCount(_currentNote.transcript);
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.background,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: AppColors.background,
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded,
               color: AppColors.textPrimary, size: 20),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: Text('Session Summary',
-            style: GoogleFonts.outfit(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: AppColors.textPrimary)),
+        title: GestureDetector(
+          onTap: _showRenameDialog,
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  _currentNote.title,
+                  style: GoogleFonts.inter(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textPrimary),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 6),
+              const Icon(Icons.edit_outlined, size: 16, color: AppColors.accent),
+            ],
+          ),
+        ),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(20, 0, 20, 100),
@@ -86,15 +171,15 @@ class SessionSummaryScreen extends ConsumerWidget {
               width: double.infinity,
               padding: const EdgeInsets.all(18),
               decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
+                color: AppColors.surface,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppColors.borderDivider),
+                border: Border.all(color: AppColors.borderSubtle),
               ),
               child: Text(
-                note.summary.isNotEmpty
-                    ? note.summary
-                    : note.transcript.isNotEmpty
-                        ? note.transcript
+                _currentNote.summary.isNotEmpty
+                    ? _currentNote.summary
+                    : _currentNote.transcript.isNotEmpty
+                        ? _currentNote.transcript
                         : 'No summary available.',
                 style: GoogleFonts.inter(
                     fontSize: 14,
@@ -111,11 +196,11 @@ class SessionSummaryScreen extends ConsumerWidget {
                   child: _StatBox(
                     icon: Icons.timer_outlined,
                     label: 'Duration',
-                    value: note.duration != Duration.zero
-                        ? _formatDuration(note.duration)
+                    value: _currentNote.duration != Duration.zero
+                        ? _formatDuration(_currentNote.duration)
                         : '—',
                     color: AppColors.primary,
-                    bg: AppColors.iceBlue,
+                    bg: AppColors.elevatedSurface,
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -148,7 +233,7 @@ class SessionSummaryScreen extends ConsumerWidget {
               ],
             ),
 
-            if (note.reminders.isNotEmpty) ...[
+            if (_currentNote.reminders.isNotEmpty) ...[
               const SizedBox(height: 24),
               Text('Key Points',
                   style: GoogleFonts.outfit(
@@ -156,15 +241,15 @@ class SessionSummaryScreen extends ConsumerWidget {
                       fontWeight: FontWeight.bold,
                       color: AppColors.textPrimary)),
               const SizedBox(height: 12),
-              ...note.reminders.map(
+              ..._currentNote.reminders.map(
                 (p) => Container(
                   margin: const EdgeInsets.only(bottom: 10),
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: AppColors.surface,
                     borderRadius: BorderRadius.circular(12),
                     border:
-                        Border.all(color: AppColors.borderDivider),
+                        Border.all(color: AppColors.borderSubtle),
                   ),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -223,13 +308,12 @@ class SessionSummaryScreen extends ConsumerWidget {
                     label: 'Ask',
                     primary: true,
                     onTap: () {
-                      // Save note first then open chat
-                      ref.read(recorderControllerProvider.notifier)
-                          .saveCurrentMeeting(note.title);
+                      ref.read(historyRepositoryProvider)
+                          .saveMeeting(_currentNote);
                       Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (_) => RecordingDetailScreen(
-                              note: note, initialTab: 2),
+                              note: _currentNote, initialTab: 2),
                         ),
                       );
                     },

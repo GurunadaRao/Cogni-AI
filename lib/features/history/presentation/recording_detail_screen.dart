@@ -6,31 +6,86 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/providers/app_providers.dart';
 import '../domain/models/history_models.dart';
 
-class RecordingDetailScreen extends StatefulWidget {
+class RecordingDetailScreen extends ConsumerStatefulWidget {
   final MeetingNote note;
   final int initialTab;
 
   const RecordingDetailScreen({super.key, required this.note, this.initialTab = 0});
 
   @override
-  State<RecordingDetailScreen> createState() => _RecordingDetailScreenState();
+  ConsumerState<RecordingDetailScreen> createState() => _RecordingDetailScreenState();
 }
 
-class _RecordingDetailScreenState extends State<RecordingDetailScreen>
+class _RecordingDetailScreenState extends ConsumerState<RecordingDetailScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  late TextEditingController _titleController;
+  late MeetingNote _currentNote;
 
   @override
   void initState() {
     super.initState();
+    _currentNote = widget.note;
+    _titleController = TextEditingController(text: widget.note.title);
     _tabController = TabController(
         length: 3, vsync: this, initialIndex: widget.initialTab);
   }
 
   @override
   void dispose() {
+    _titleController.dispose();
     _tabController.dispose();
     super.dispose();
+  }
+
+  void _showRenameDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: Text('Rename Session',
+            style: GoogleFonts.inter(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textPrimary)),
+        content: TextField(
+          controller: _titleController,
+          autofocus: true,
+          style: GoogleFonts.inter(color: AppColors.textPrimary),
+          decoration: const InputDecoration(
+            hintText: 'Enter session name',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text('Cancel', style: GoogleFonts.inter(color: AppColors.textMuted)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final newTitle = _titleController.text.trim();
+              if (newTitle.isNotEmpty) {
+                setState(() {
+                  _currentNote = MeetingNote(
+                    id: _currentNote.id,
+                    title: newTitle,
+                    transcript: _currentNote.transcript,
+                    summary: _currentNote.summary,
+                    reminders: _currentNote.reminders,
+                    recordingWavUrl: _currentNote.recordingWavUrl,
+                    createdAt: _currentNote.createdAt,
+                    duration: _currentNote.duration,
+                  );
+                });
+                ref.read(historyRepositoryProvider).saveMeeting(_currentNote);
+              }
+              Navigator.of(ctx).pop();
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
   }
 
   String _formatDuration(Duration d) {
@@ -41,7 +96,7 @@ class _RecordingDetailScreenState extends State<RecordingDetailScreen>
 
   @override
   Widget build(BuildContext context) {
-    final note = widget.note;
+    final note = _currentNote;
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Column(
@@ -90,15 +145,27 @@ class _RecordingDetailScreenState extends State<RecordingDetailScreen>
                             ),
                             const SizedBox(width: 12),
                             Expanded(
-                              child: Text(
-                                note.title,
-                                style: GoogleFonts.outfit(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
+                              child: GestureDetector(
+                                onTap: _showRenameDialog,
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        note.title,
+                                        style: GoogleFonts.outfit(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white,
+                                        ),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    const Icon(Icons.edit_outlined,
+                                        color: Colors.white70, size: 18),
+                                  ],
                                 ),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
                           ],

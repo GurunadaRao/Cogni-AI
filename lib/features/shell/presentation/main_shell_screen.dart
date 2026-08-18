@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'widgets/floating_bottom_nav_bar.dart';
 import '../../dashboard/presentation/dashboard_screen.dart';
-import '../../recorder/presentation/recorder_screen.dart';
 import '../../history/presentation/history_screen.dart';
+import '../../settings/presentation/settings_screen.dart';
 
 class MainShellScreen extends StatefulWidget {
   const MainShellScreen({super.key});
@@ -16,8 +16,8 @@ class _MainShellScreenState extends State<MainShellScreen> {
 
   final List<Widget> _screens = const [
     DashboardScreen(),
-    RecorderScreen(),
     HistoryScreen(),
+    SettingsScreen(),
   ];
 
   void switchTab(int index) {
